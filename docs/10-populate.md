@@ -68,13 +68,6 @@ Product.find().populate({
 
 This is the classic **N+1** in disguise: lending the term from SQL, populate is *"a JOIN done in application code"*.
 
-## populate vs aggregation
-
-| Need | Tool |
-|---|---|
-| Quick reference resolution, small sets | `populate()` |
-| Heavy relational reporting, big collections | aggregation `$lookup` |
-
 ## Gotchas
 
 - `ref` string must exactly match the registered mongoose model name.
