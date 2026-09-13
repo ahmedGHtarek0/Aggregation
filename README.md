@@ -1,8 +1,8 @@
-# MongoDB & Mongoose — Querying & Aggregation Master Guide
+# MongoDB & Mongoose — Querying Master Guide
 
 > An advanced, production-ready reference for junior backend developers who want to stop guessing and start querying MongoDB through Mongoose like a professional.
 
-This repository is a **single source of truth** for the most important MongoDB/Mongoose querying concepts: document retrieval, filtering, sorting, pagination, relationships, and the aggregation pipeline.
+This repository is a **single source of truth** for the most important MongoDB/Mongoose querying concepts: document retrieval, filtering, sorting, pagination, and relationships.
 
 Each major topic lives on its **own git branch** (see [Branches](#-repository-structure--branches)) so you can study, checkout, and experiment with one concept at a time.
 
@@ -26,11 +26,10 @@ Each major topic lives on its **own git branch** (see [Branches](#-repository-st
     - [`skip()` + Pagination](#9-skip--pagination)
 6. [Relationships](#relationships)
     - [`populate()`](#10-populate)
-7. [Aggregation](#11-aggregation-pipeline)
-8. [Advanced Topics](#advanced-topics)
-9. [Repository Structure & Branches](#-repository-structure--branches)
-10. [Cheat Sheet](#cheat-sheet)
-11. [Common Pitfalls](#common-pitfalls)
+7. [Advanced Topics](#advanced-topics)
+8. [Repository Structure & Branches](#-repository-structure--branches)
+9. [Cheat Sheet](#cheat-sheet)
+10. [Common Pitfalls](#common-pitfalls)
 
 ---
 
@@ -43,7 +42,6 @@ Each major topic lives on its **own git branch** (see [Branches](#-repository-st
 | Result control | `sort()`, `limit()`, `skip()` |
 | Pagination | `skip`/`limit` strategy + formulas |
 | Relationships | `populate()` (MongoDB's "JOIN") |
-| Aggregation | `$match`, `$group`, `$sort`, `$project`, `$lookup`, `$unwind`, `$count`, `$addFields` |
 
 ---
 
@@ -427,129 +425,7 @@ Product.find().populate({
 Product.find().populate({ path: "owner", match: { active: true } });
 ```
 
-> `populate()` performs a **separate query per path** under the hood. It is not a single database JOIN. For heavy relational reads across huge collections, consider aggregation's `$lookup` instead.
-
----
-
-## 11. Aggregation Pipeline
-
-Aggregation is a **pipeline**: each stage transforms the incoming documents and passes the result to the next stage.
-
-```text
-Products
-   ↓
-Stage 1  ($match)
-   ↓
-Stage 2  ($group)
-   ↓
-Stage 3  ($sort)
-   ↓
-Final Result
-```
-
-Unlike `find()`, aggregation can **group, join, calculate, and reshape**.
-
-### Core stages
-
-```ts
-const pipeline = [
-  // 1. Filter first — fewer docs into later stages (cheaper!)
-  { $match: { category: "Food" } },
-
-  // 2. Group and aggregate
-  {
-    $group: {
-      _id: "$category",
-      avgPrice: { $avg: "$price" },
-      totalProducts: { $sum: 1 },
-      revenue: { $sum: { $multiply: ["$price", "$quantity"] } }
-    }
-  },
-
-  // 3. Sort grouped results
-  { $sort: { avgPrice: -1 } },
-
-  // 4. Shape the output
-  { $project: { _id: 0, category: "$_id", avgPrice: 1 } }
-];
-
-const stats = await Product.aggregate(pipeline);
-```
-
-### A realistic report: total products & average price per category
-
-```ts
-const result = await Product.aggregate([
-  { $match: { createdAt: { $gte: startOfMonth } } },
-  {
-    $group: {
-      _id: "$category",
-      count: { $sum: 1 },
-      avgPrice: { $avg: "$price" },
-      minPrice: { $min: "$price" },
-      maxPrice: { $max: "$price" }
-    }
-  },
-  { $sort: { count: -1 } }
-]);
-```
-
-### `$lookup` — aggregation's real JOIN
-
-```ts
-const productsWithOwners = await Product.aggregate([
-  {
-    $lookup: {
-      from: "users",                          // target collection
-      localField: "owner",                    // field in Product
-      foreignField: "_id",                    // field in users
-      as: "owner"                             // output array (usually renamed)
-    }
-  },
-  { $unwind: "$owner" },                      // convert array → single object
-  { $project: { "owner.passwordHash": 0 } }   // hide sensitive fields
-]);
-```
-
-### `$unwind`
-
-Deconstructs an array field into one doc per element — ideal for per-item reporting:
-
-```ts
-const tagStats = await Product.aggregate([
-  { $unwind: "$tags" },
-  {
-    $group: {
-      _id: "$tags",
-      products: { $addToSet: "$name" }
-    }
-  }
-]);
-```
-
-### `$addFields`, `$count`, `$limit`, `$sample`
-
-```ts
-await Product.aggregate([
-  { $addFields: { discounted: { $multiply: ["$price", 0.9] } } },
-  { $match: { discounted: { $lte: 450 } } },
-  { $count: "discountedCount" }        // => [{ discountedCount: 2 }]
-]);
-
-await Product.aggregate([{ $sample: { size: 3 } }]); // random docs
-```
-
-### Pipeline order matters
-
-```text
-1. $match  +  $project  (early)     → shrink data early
-2. $lookup + $unwind                → widen/join (only when needed)
-3. $group  +  $addFields            → compute
-4. $sort   +  $skip/$limit          → shape order & page
-5. $project/$count/(re)shape        → final shape
-```
-
-> Add `{ $allowDiskUse: true }` or run with `.allowDiskUse(true)` for big group/sort stages when they exceed the 100MB memory limit.
+> `populate()` performs a **separate query per path** under the hood. It is not a single database JOIN — keep that in mind for heavy relational reads.
 
 ---
 
@@ -638,8 +514,7 @@ main
     ├── 07-sort.md
     ├── 08-limit.md
     ├── 09-skip-pagination.md
-    ├── 10-populate.md
-    └── 11-aggregation.md
+    └── 10-populate.md
 ```
 
 | Branch | Topic |
@@ -655,7 +530,6 @@ main
 | `feature/08-limit` | `limit()` |
 | `feature/09-skip-pagination` | `skip()` + pagination |
 | `feature/10-populate` | `populate()` relationships |
-| `feature/11-aggregation` | Aggregation pipeline |
 
 **Explore a single topic:**
 
@@ -687,19 +561,6 @@ Product.findByIdAndDelete(id)
 
 // RELATION
 .findById(id).populate("owner", "name")
-
-// AGGREGATE
-Product.aggregate([
-  { $match: { category: "Food" } },
-  { $group: { _id: "$category", avg: { $avg: "$price" } } },
-  { $sort: { avg: -1 } },
-  {
-    $lookup: {
-      from: "users", localField: "owner", foreignField: "_id", as: "owner"
-    }
-  },
-  { $unwind: "$owner" }
-])
 ```
 
 ---
@@ -711,9 +572,9 @@ Product.aggregate([
 3. **Query builders are lazy** — forgetting `await`/`.exec()` gives you a Query object, not data.
 4. **Unclamped `limit`/`page` from query strings** — validate inputs to avoid slow/broken requests.
 5. **Deep offset pagination** — `skip(100000)` is slow; switch to cursors for huge sets.
-6. **Populate is N+1** — it issues extra queries per path; use `$lookup` for heavy relational reads.
+6. **Populate is N+1** — it issues extra queries per path; keep it in mind for heavy relational reads.
 7. **`$and` vs `$or` mix-ups** — `$or` = any, all else is AND by default.
-8. **Sorting unindexed fields in aggregation** — can exceed the 100MB memory cap → add indexes or `allowDiskUse`.
+8. **Sorting unindexed fields** — forces an in-memory sort over the whole collection; add indexes in the schema.
 9. **IDs are strings, not `ObjectId`(**)** — invalid IDs make `findById` throw a `CastError`; validate or catch it.
 
 ```text
